@@ -5,13 +5,6 @@ var config;
 module.exports.commands = ["turntable", "tt", "playlist"];
 
 module.exports.init = function(bot) {
-  bot.getConfig( "turntable.json", function( err, conf ) {
-    if( err ) {
-      console.log( err );
-    } else {
-      config = conf;
-    }
-  });
 };
 
 module.exports.run = function(remainder, parts, reply, command, from, to, text, raw){
@@ -21,8 +14,6 @@ module.exports.run = function(remainder, parts, reply, command, from, to, text, 
           return turntable(remainder, from, reply);
         case "turntable":
           return turntable(remainder, from, reply);
-        case "playlist":
-          return getPlaylist(remainder, reply, '');
         default:
           return reply("Error, command <" + command + "> not implemented!");
       }
@@ -165,39 +156,4 @@ function queueSong(song_id, from, reply) {
 
 }
 
-function getPlaylist(remainder, reply, pageToken) {
-  var playlist_id = remainder;
-  https.get('https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&maxResults=50&'
-      + pageToken + 'playlistId=' + playlist_id + '&key=' + config.youtube_key, function(res) {
-    var pdata = '';
-    res.on('data', function(chunk) {
-      pdata += chunk;
-    });
-    var playlistData;
-    res.on('end', function() {
-      try {
-        playlistData = JSON.parse(pdata.toString());
-      } catch(e) {
-        return reply("Error handling youtube");
-      }
-      var songs = playlistData.items;
-      var title, yt_hash, author
-      for(i = 0; i < songs.length; ++i)
-      {
-        title = songs[i].snippet.title;
-        yt_hash = songs[i].snippet.resourceId.videoId;
-        author = songs[i].snippet.channelTitle;
-        reply(title);
-        //reply(title + " : " + author + " : " + yt_hash);
-      }
-      var pageToken, pageTokenString;
-      pageToken = playlistData.nextPageToken;
-      if (typeof(pageToken) !== "undefined" )
-      {
-        pageTokenString = "pageToken=" + pageToken + "&";
-        getPlaylist(remainder, reply, pageTokenString)
-      } 
-    });
- });
-}
 
