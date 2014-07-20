@@ -190,7 +190,7 @@ function skipSong(from, reply) {
       } catch(e) {
         return reply("Error handling turntable response");
       }
-      reply(from + " and " + turntableData.skips-1 + " others want to skip this song!");
+      reply(from + " and " + turntableData.skips + " others want to skip this song!");
 
     });
   });
