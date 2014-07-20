@@ -171,7 +171,7 @@ function skipSong(from, reply) {
   var post_options = {
     host: 'turntable.dongs.in',
     port: '80',
-    path: '/api/room/' + 'interns' + '/skip',
+    path: '/api/rooms/' + 'interns' + '/skip',
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -190,7 +190,7 @@ function skipSong(from, reply) {
       } catch(e) {
         return reply("Error handling turntable response");
       }
-      reply(from + " and " + turntableData.votes + " others want to skip this song!");
+      reply(from + " and " + turntableData.skips-1 + " others want to skip this song!");
 
     });
   });
