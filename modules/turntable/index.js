@@ -2,10 +2,17 @@ var http = require('http');
 var https = require('https');
 var querystring = require('querystring');
 var config;
-
+var sleep = require('sleep');
 module.exports.commands = ["turntable", "tt", "playlist"];
 
 module.exports.init = function(bot) {
+  bot.getConfig( "turntable.json", function( err, conf ) {
+    if( err ) {
+      console.log( err );
+    } else {
+      config = conf;
+    }
+  });
   console.log("started turntable module");
 };
 
@@ -33,14 +40,91 @@ function turntable(remainder, from, to, reply) {
     case "leave":
       return leaveRoom(from, reply, to);
     case "add":
-      return addSong(args[1], from, reply);
+      return addCommand(args, from, reply, to);
     case "skip":
       return skipSong(from,reply);
     case "queue": 
       return queueSong(args[1], from, reply);
+    case "show":
+      return showCommand(args, from, reply, to);
     default:
       return reply("Error, command <" + args[0] + "> not implemented!");
   }
+}
+
+function addCommand(args, from, reply, to) {
+  if(args[2])
+    return addPlaylist(args, from, reply, to, '');
+  else
+    return addSong(args[1], from, reply);
+}
+
+function showCommand(args, from, reply, to) {
+  switch(args[1])
+  {
+    case "queue":
+      return showQueue(args, from, reply, to);
+    case "room":
+      return showRoom(args, from, reply, to);
+    default:
+      return reply("Error, command !tt show <" + args[1] + "> not implemented!");
+  }
+}
+
+function showQueue(args, from, reply, to) {
+  if(args[2])
+    return showUserQueue(args[2], reply);
+  else
+    return showUserQueue(from, reply);
+}
+
+function showUserQueue(from, reply) {
+  http.get('http://turntable.dongs.in/api/users/' + from + '/queue',
+    function(res) {
+    var data = '';
+    res.on('data', function(chunk) {
+      data += chunk;
+    });
+    var queueData;
+    res.on('end', function() {
+      try {
+        queueData = JSON.parse(data.toString());
+      } catch(e) {
+        return reply("Error handling turntable response");
+      }
+      reply("Queue for " + from);
+      for(var i = 0; i < queueData.length; i++)
+      {
+        var song = queueData[i];
+        reply(i + ". " + song.title);
+      }
+      
+    });
+  });
+}
+
+function showRoom(args, from, reply, to) {
+  http.get('http://turntable.dongs.in/api/rooms/' + 'interns' + '/djlist',
+    function(res) {
+    var data = '';
+    res.on('data', function(chunk) {
+      data += chunk;
+    });
+    var roomData;
+    res.on('end', function() {
+      try {
+        roomData = JSON.parse(data.toString());
+      } catch(e) {
+        return reply("Error handling turntable response");
+      }
+      reply("DJ Queue List for #" + 'interns');
+      for(var i = 0; i < roomData.users.length; i++)
+      {
+        var user = roomData.users[i];
+        reply(i + ". " + user.username + " : " + user.next_song);
+      }
+    });
+  });
 }
 
 function leaveRoom(from, reply, to) {
@@ -117,7 +201,47 @@ function joinRoom(from, reply, to) {
   post_req.end();
 }
 
+function addPlaylist(args, from, reply, to, pageToken) {
+  var playlist_id = args[2];
+  reply("Playlist id: " + args[2]);
+  var url = 'https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&maxResults=50&'
+      + pageToken + 'playlistId=' + playlist_id + '&fields=items(id,snippet)&key=' + config.youtube_key;
+    https.get(url, function(res) {
+    var pdata = '';
+    res.on('data', function(chunk) {
+      pdata += chunk;
+    });
+    var playlistData;
+    res.on('end', function() {
+      try {
+        playlistData = JSON.parse(pdata.toString());
+      } catch(e) {
+        return reply("Error handling youtube");
+      }
+      var songs = playlistData.items;
+      var title, yt_hash, author;
+      for(i = 0; i < songs.length; ++i)
+      {
+        title = songs[i].snippet.title;
+        yt_hash = songs[i].snippet.resourceId.videoId;
+        author = songs[i].snippet.channelTitle;
+        reply("Adding Song: " + title);
+        addSong(yt_hash, from, reply);
+        sleep.sleep(20);        
+      }
+      var pageToken, pageTokenString;
+      pageToken = playlistData.nextPageToken;
+      if (typeof(pageToken) !== "undefined" )
+      {
+        pageTokenString = "pageToken=" + pageToken + "&";
+        getPlaylist(args, from, reply, to, pageTokenString);
+      } 
+    });
+ });
+}
+
 function addSong(song_id, from, reply) {
+  reply("Adding Song: " + song_id);
   var post_data = querystring.stringify({
     'hash' : song_id
   });
@@ -132,12 +256,14 @@ function addSong(song_id, from, reply) {
     }
   };
   var post_req = http.request(post_options, function(res) { 
+    reply(post_options.path);
     var ttdata = '';
     res.on('data', function(chunk) {
       ttdata += chunk;
     });
     var turntableData;
     res.on('end', function() {
+      reply(ttdata.toString());
       try {
         turntableData = JSON.parse(ttdata.toString());
       } catch(e) {
@@ -235,5 +361,6 @@ function queueSong(song_id, from, reply) {
   post_req.end();
 
 }
+
 
 
