@@ -4,7 +4,8 @@
   "description": "A Youtube DJ  module",
   "main": "index.js",
   "dependencies": {
-    "youtube-api": "latest"
+    "sleep": "latest",
+    "youtube-api": "git://github.com/gmackie/youtube-api.git#master"
   },
   "author": "gmackie",
   "license": "MIT"

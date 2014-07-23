@@ -1,8 +1,11 @@
 var http = require('http');
 var https = require('https');
 var querystring = require('querystring');
-var config;
+var youtube = require("youtube-api");
 var sleep = require('sleep');
+
+var config;
+
 module.exports.commands = ["turntable", "tt", "playlist"];
 
 module.exports.init = function(bot) {
@@ -10,7 +13,12 @@ module.exports.init = function(bot) {
     if( err ) {
       console.log( err );
     } else {
+      console.log(conf);
       config = conf;
+      youtube.authenticate({
+        type: "key",
+        key: config.youtube_key
+      });
     }
   });
   console.log("started turntable module");
@@ -32,7 +40,6 @@ module.exports.run = function(remainder, parts, reply, command, from, to, text, 
 function turntable(remainder, from, to, reply) {
   var command, args;
   args = remainder.split(" ");
-  reply("command: " + args[0]);
   switch(args[0])
   {
     case "join":
@@ -44,7 +51,7 @@ function turntable(remainder, from, to, reply) {
     case "skip":
       return skipSong(from,reply);
     case "queue": 
-      return queueSong(args[1], from, reply);
+      return queueSong(args, from, reply);
     case "show":
       return showCommand(args, from, reply, to);
     default:
@@ -53,10 +60,10 @@ function turntable(remainder, from, to, reply) {
 }
 
 function addCommand(args, from, reply, to) {
-  if(args[2])
+  if(args[2] == "playlist")
     return addPlaylist(args, from, reply, to, '');
   else
-    return addSong(args[1], from, reply);
+    return addSong(args, from, reply);
 }
 
 function showCommand(args, from, reply, to) {
@@ -203,45 +210,69 @@ function joinRoom(from, reply, to) {
 
 function addPlaylist(args, from, reply, to, pageToken) {
   var playlist_id = args[2];
-  reply("Playlist id: " + args[2]);
-  var url = 'https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&maxResults=50&'
-      + pageToken + 'playlistId=' + playlist_id + '&fields=items(id,snippet)&key=' + config.youtube_key;
-    https.get(url, function(res) {
-    var pdata = '';
-    res.on('data', function(chunk) {
-      pdata += chunk;
-    });
-    var playlistData;
-    res.on('end', function() {
-      try {
-        playlistData = JSON.parse(pdata.toString());
-      } catch(e) {
-        return reply("Error handling youtube");
-      }
-      var songs = playlistData.items;
-      var title, yt_hash, author;
-      for(i = 0; i < songs.length; ++i)
-      {
-        title = songs[i].snippet.title;
-        yt_hash = songs[i].snippet.resourceId.videoId;
-        author = songs[i].snippet.channelTitle;
-        reply("Adding Song: " + title);
-        addSong(yt_hash, from, reply);
-        sleep.sleep(20);        
-      }
-      var pageToken, pageTokenString;
-      pageToken = playlistData.nextPageToken;
-      if (typeof(pageToken) !== "undefined" )
-      {
-        pageTokenString = "pageToken=" + pageToken + "&";
-        getPlaylist(args, from, reply, to, pageTokenString);
-      } 
-    });
- });
+  youtube.playlistItem.list({
+    "part": "snippet",
+    "maxResults": 50,
+    "pageToken": pageToken,
+    "playlistId": playlist_id,
+    "fields": "items(id,snippet)"
+  }, function (err, data) {
+    var songs = data.items;
+    var title, yt_hash, author;
+    for(i = 0; i < songs.length; ++i)
+    {
+      title = songs[i].snippet.title;
+      yt_hash = songs[i].snippet.resourceId.videoId;
+      author = songs[i].snippet.channelTitle;
+      reply("Adding Song: " + title);
+      addSongHash(yt_hash, from, reply);
+      sleep.sleep(20);        
+    }
+    var pageToken, pageTokenString;
+    pageToken = data.nextPageToken;
+    if (typeof(pageToken) !== "undefined" )
+    {
+      pageTokenString = "pageToken=" + pageToken + "&";
+      getPlaylist(args, from, reply, to, pageTokenString);
+    } 
+  });
 }
 
-function addSong(song_id, from, reply) {
-  reply("Adding Song: " + song_id);
+function addSong(args, from, reply, to, pageToken) {
+  args.splice(0,1);
+  var querystring = args.join(' ');
+  youtube.search.list({
+    "part": "snippet",
+    "maxResults": 1,
+    "q": querystring
+  }, function (err, data) {
+    var songs = data.items;
+    var title, yt_hash, author;
+    title = songs[0].snippet.title;
+    yt_hash = songs[0].id.videoId;
+    author = songs[0].snippet.channelTitle;
+    addSongHash(yt_hash, from, reply);
+  });
+}
+
+function queueSong(args, from, reply) {
+  args.splice(0,1);
+  var querystring = args.join(' ');
+  youtube.search.list({
+    "part": "snippet",
+    "maxResults": 1,
+    "q": querystring
+  }, function (err, data) {
+    var songs = data.items;
+    var title, yt_hash, author;
+    title = songs[0].snippet.title;
+    yt_hash = songs[0].id.videoId;
+    author = songs[0].snippet.channelTitle;
+    queueSongHash(yt_hash, from, reply);
+  });
+}
+
+function addSongHash(song_id, from, reply, room) {
   var post_data = querystring.stringify({
     'hash' : song_id
   });
@@ -256,14 +287,12 @@ function addSong(song_id, from, reply) {
     }
   };
   var post_req = http.request(post_options, function(res) { 
-    reply(post_options.path);
     var ttdata = '';
     res.on('data', function(chunk) {
       ttdata += chunk;
     });
     var turntableData;
     res.on('end', function() {
-      reply(ttdata.toString());
       try {
         turntableData = JSON.parse(ttdata.toString());
       } catch(e) {
@@ -316,8 +345,14 @@ function skipSong(from, reply) {
       } catch(e) {
         return reply("Error handling turntable response");
       }
-      reply(from + " and " + turntableData.skips + " others want to skip this song!");
-
+      if (turntableData.skips >= turntableData.req_skips)
+      {
+        reply("Skipping song: " + turntableData.title + ". Skips Reached : " + turntableData.skips);
+      }
+      else
+      {
+        reply(from + " and " + turntableData.skips - 1 + " others want to skip " + turntableData.title);
+      }
     });
   });
   post_req.write(post_data);
@@ -325,7 +360,7 @@ function skipSong(from, reply) {
 
 }
 
-function queueSong(song_id, from, reply) {
+function queueSongHash(song_id, from, reply) {
   var post_data = querystring.stringify({
     'hash' : song_id,
     'room' : 'interns'
@@ -353,7 +388,7 @@ function queueSong(song_id, from, reply) {
         return reply("Error handling turntable response");
       }
       
-      reply("Added " + turntableData.title + " to the #interns queue, you are song number " + turntableData.queuePos);
+      reply("Added " + turntableData.title + " to the " + 'interns' + 'room');
 
     });
   });
