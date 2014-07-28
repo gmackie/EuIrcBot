@@ -351,7 +351,9 @@ function skipSong(from, reply) {
       }
       else
       {
-        reply(from + " and " + turntableData.skips - 1 + " others want to skip " + turntableData.title);
+        var skips = turntableData.skips - 1 || 0;
+        reply(from + " and " + skips + " others want to skip " + turntableData.title);
+
       }
     });
   });
