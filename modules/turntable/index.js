@@ -389,9 +389,15 @@ function queueSongHash(song_id, from, reply) {
       } catch(e) {
         return reply("Error handling turntable response");
       }
-      
-      reply("Added " + turntableData.title + " to the " + 'interns' + 'room');
-
+      if (turntableData.added == 0)
+      {
+        addSongHash(turntableData.hash, from, reply);
+        queueSongHash(turntableData.hash, from, reply);
+      }
+      else
+      {
+        reply("Added " + turntableData.title + " to the " + 'interns' + 'room');
+      }
     });
   });
   post_req.write(post_data);
